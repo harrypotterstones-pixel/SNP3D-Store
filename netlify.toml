@@ -1,0 +1,10 @@
+[build]
+  publish = "."
+  command = ""
+
+# Redirect API calls to your backend - update the `to` host after deploying the API
+[[redirects]]
+  from = "/api/*"
+  to = "https://YOUR_BACKEND_HOSTNAME.example.com/api/:splat"
+  status = 200
+  force = false
