@@ -1028,9 +1028,15 @@
 
         function updateHeroStats() {
             const creators = buildCreatorsFromProducts(products);
-            const inStockColors = products.reduce((count, product) => {
-                return count + Object.values(product.colors).filter((color) => color.inStock).length;
-            }, 0);
+            // Count unique in-stock colors from the master color list
+            const master = loadMasterColors();
+            const uniqueInStock = new Set();
+            Object.keys(master).forEach((colorName) => {
+                if (!master[colorName].available) return;
+                const used = products.some((product) => product.colors && product.colors[colorName] && product.colors[colorName].inStock);
+                if (used) uniqueInStock.add(colorName);
+            });
+            const inStockColors = uniqueInStock.size;
 
             document.getElementById('heroProductCount').textContent = products.length;
             document.getElementById('heroCreatorCount').textContent = creators.length;
@@ -1111,7 +1117,7 @@
                     <button
                         type="button"
                         class="swatch ${colorState.inStock ? '' : 'out-of-stock'}"
-                        style="background: ${COLOR_HEX[colorName] || '#999'}"
+                        style="background: ${getColorHex(colorName) || '#999'}"
                         title="${colorName}${colorState.inStock ? '' : ' - Out of stock'}"
                         onclick="selectColor(${product.id}, ${JSON.stringify(colorName)}, this)"
                         ${colorState.inStock ? '' : 'disabled'}
@@ -1220,7 +1226,7 @@
             const modal = document.getElementById('previewModal');
             document.getElementById('modalTitle').textContent = `${product.name} - ${selectedColor}`;
             document.getElementById('modalImageContainer').innerHTML = `
-                <div class="preview-art" style="background: linear-gradient(135deg, ${COLOR_HEX[selectedColor] || '#777'}, #4a413c);">
+                <div class="preview-art" style="background: linear-gradient(135deg, ${getColorHex(selectedColor) || '#777'}, #4a413c);">
                     ${product.emoji}
                 </div>
             `;

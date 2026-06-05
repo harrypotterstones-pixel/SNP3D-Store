@@ -24,6 +24,48 @@ const COLOR_HEX = {
     "Green": "#2ecc71"
 };
 
+const MASTER_COLOR_STORAGE_KEY = 'snp3d_master_colors';
+
+function defaultMasterColors() {
+    const map = {};
+    Object.keys(COLOR_HEX).forEach((name) => {
+        map[name] = { hex: COLOR_HEX[name], available: true };
+    });
+    return map;
+}
+
+function loadMasterColors() {
+    const saved = localStorage.getItem(MASTER_COLOR_STORAGE_KEY);
+    if (!saved) {
+        const defaults = defaultMasterColors();
+        localStorage.setItem(MASTER_COLOR_STORAGE_KEY, JSON.stringify(defaults));
+        return defaults;
+    }
+
+    try {
+        const parsed = JSON.parse(saved);
+        // Ensure seeded colors exist
+        const defaults = defaultMasterColors();
+        const merged = { ...defaults, ...parsed };
+        localStorage.setItem(MASTER_COLOR_STORAGE_KEY, JSON.stringify(merged));
+        return merged;
+    } catch (e) {
+        const defaults = defaultMasterColors();
+        localStorage.setItem(MASTER_COLOR_STORAGE_KEY, JSON.stringify(defaults));
+        return defaults;
+    }
+}
+
+function saveMasterColors(map) {
+    localStorage.setItem(MASTER_COLOR_STORAGE_KEY, JSON.stringify(map));
+}
+
+function getColorHex(name) {
+    const master = loadMasterColors();
+    if (master[name] && master[name].hex) return master[name].hex;
+    return COLOR_HEX[name] || '#999';
+}
+
 const DEFAULT_PRODUCTS = [
     // Original 12 products
     { id: 1, name: "Heavy-Duty Cat Suspension Bridge", creator: "Cujochris", creatorUrl: "https://makerworld.com/en/@Cujochris", modelUrl: "https://makerworld.com/en/models/932446-heavy-duty-cat-suspension-bridge-wall-mounted", emoji: "&#128049;", colors: { "Black": { inStock: true, generated: false }, "White": { inStock: true, generated: false }, "Gray": { inStock: true, generated: false }, "Navy": { inStock: false, generated: false }, "Red": { inStock: true, generated: false }, "Blue": { inStock: true, generated: false } } },

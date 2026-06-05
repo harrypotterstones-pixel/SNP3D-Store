@@ -421,6 +421,68 @@
                 <strong id="statColors">0</strong>
             </div>
         </section>
+    
+        <!-- Edit product modal -->
+        <div class="modal" id="editProductModal">
+            <div class="modal-card">
+                <h2>Edit Product</h2>
+                <form id="editProductForm">
+                    <div class="field">
+                        <label for="editName">Product Name</label>
+                        <input id="editName" />
+                    </div>
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="editCreator">Creator</label>
+                            <input id="editCreator" />
+                        </div>
+                        <div class="field">
+                            <label for="editCreatorUrl">Creator Profile URL</label>
+                            <input id="editCreatorUrl" type="url" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="editModelUrl">Model URL</label>
+                        <input id="editModelUrl" type="url" />
+                    </div>
+                    <div class="field">
+                        <label for="editFilaments">Filaments (comma separated)</label>
+                        <input id="editFilaments" placeholder="PLA, PETG, TPU" />
+                    </div>
+                    <div class="field">
+                        <label>Offered Colors</label>
+                        <div id="editColorOptions" style="display:flex; flex-wrap:wrap; gap:0.5rem;"></div>
+                    </div>
+                    <div class="field">
+                        <label>Product Photo</label>
+                        <input type="file" id="editImageFileInput" accept="image/*" style="display:none;" onchange="handleEditImageUpload(event)" />
+                        <div style="display:flex; gap:0.5rem; align-items:center;"><button type="button" class="btn btn-secondary" onclick="document.getElementById('editImageFileInput').click()">Choose Photo</button><span id="editImageName" style="color:var(--muted)"></span></div>
+                        <div id="editImagePreview" style="margin-top:0.6rem; display:none;"><img id="editImagePreviewImg" style="max-width:100%; max-height:200px; border-radius:8px; object-fit:contain;"></div>
+                    </div>
+                    <div style="display:flex; gap:0.6rem; justify-content:flex-end; margin-top:0.6rem;">
+                        <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+                        <button type="button" class="btn btn-primary" onclick="saveProductEdits()">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Manage colors modal -->
+        <div class="modal" id="manageColorsModal">
+            <div class="modal-card">
+                <h2>Master Color List</h2>
+                <p style="color:var(--muted);">Add, edit, or remove colors and mark whether a color is available for sale.</p>
+                <div style="display:flex; gap:0.6rem; margin-top:0.8rem; align-items:center;">
+                    <input id="newMasterColorName" placeholder="Color name (e.g. Orchid)" style="flex:1;" />
+                    <input id="newMasterColorHex" placeholder="#aabbcc" style="width:120px;" />
+                    <button type="button" class="btn btn-primary" onclick="addMasterColor()">Add Color</button>
+                </div>
+                <div id="masterColorGrid" class="color-grid" style="margin-top:1rem; max-height:360px; overflow:auto;"></div>
+                <div style="display:flex; gap:0.6rem; justify-content:flex-end; margin-top:0.8rem;">
+                    <button type="button" class="btn btn-secondary" onclick="closeManageColorsModal()">Close</button>
+                </div>
+            </div>
+        </div>
 
         <div class="tabs">
             <button type="button" class="tab active" data-tab="products" onclick="showTab(event, 'products')">Products</button>
@@ -434,6 +496,9 @@
                     <div>
                         <h2>Current Catalog</h2>
                         <p>Any product you add here automatically feeds both the storefront and the attribution page.</p>
+                    </div>
+                    <div style="display:flex; gap:0.6rem; align-items:center;">
+                        <button type="button" class="btn btn-secondary" onclick="openManageColorsModal()">Manage Colors</button>
                     </div>
                 </div>
                 <div class="product-list" id="productList"></div>
@@ -617,9 +682,15 @@
         function renderStats() {
             refreshData();
             const creators = buildCreatorsFromProducts(products);
-            const inStockColors = products.reduce((count, product) => {
-                return count + Object.values(product.colors).filter((color) => color.inStock).length;
-            }, 0);
+            // Count unique in-stock colors across products but only from the master color list
+            const master = loadMasterColors();
+            const uniqueInStock = new Set();
+            Object.keys(master).forEach((colorName) => {
+                if (!master[colorName].available) return;
+                const used = products.some((product) => product.colors && product.colors[colorName] && product.colors[colorName].inStock);
+                if (used) uniqueInStock.add(colorName);
+            });
+            const inStockColors = uniqueInStock.size;
 
             document.getElementById('statProducts').textContent = products.length;
             document.getElementById('statCreators').textContent = creators.length;
@@ -641,7 +712,7 @@
                 const productIdLiteral = JSON.stringify(product.id);
                 const colorsHtml = Object.entries(product.colors).map(([colorName, colorState]) => `
                     <div class="color-item">
-                        <div class="swatch" style="background: ${COLOR_HEX[colorName] || '#999'}"></div>
+                        <div class="swatch" style="background: ${getColorHex(colorName) || '#999'}"></div>
                         <span>${colorName}</span>
                         <div class="toggle ${colorState.inStock ? 'on' : ''}" onclick="toggleColor(${productIdLiteral}, ${JSON.stringify(colorName)})"></div>
                         <button type="button" class="delete-inline" onclick="deleteColor(${productIdLiteral}, ${JSON.stringify(colorName)})">Remove</button>
@@ -653,14 +724,17 @@
                 item.innerHTML = `
                     <div class="product-top">
                         <div class="product-title">
-                            <div class="emoji">${product.emoji}</div>
+                            <div class="emoji">${product.imageData ? '<img src="' + product.imageData + '" style="width:52px;height:52px;border-radius:8px;object-fit:cover;">' : product.emoji}</div>
                             <div>
                                 <h3>${product.name}</h3>
                                 <p>Creator: <a href="${product.creatorUrl}" target="_blank" rel="noopener">${product.creator}</a></p>
                                 <p><a href="${product.modelUrl}" target="_blank" rel="noopener">Open source model</a></p>
                             </div>
                         </div>
-                        <button type="button" class="btn btn-danger" onclick="deleteProduct(${productIdLiteral})">Delete Product</button>
+                        <div style="display:flex;gap:0.5rem;">
+                            <button type="button" class="btn btn-secondary" onclick="openEditModal(${productIdLiteral})">Edit</button>
+                            <button type="button" class="btn btn-danger" onclick="deleteProduct(${productIdLiteral})">Delete</button>
+                        </div>
                     </div>
                     <div class="color-grid">${colorsHtml}</div>
                 `;
@@ -781,7 +855,9 @@
                 creatorUrl: document.getElementById('newCreatorUrl').value.trim(),
                 modelUrl: document.getElementById('newModelUrl').value.trim(),
                 emoji: document.getElementById('newEmoji').value.trim(),
-                colors
+                colors,
+                filaments: [],
+                imageData: null
             });
 
             persistProducts();
@@ -790,6 +866,173 @@
             renderStats();
             document.querySelector('[data-tab="products"]').click();
             alert('Product added to the catalog.');
+        }
+        // --- Edit product modal and master color management ---
+        let editingProductId = null;
+
+        function openEditModal(productId) {
+            refreshData();
+            const product = products.find(p => p.id === productId);
+            if (!product) return;
+            editingProductId = productId;
+            document.getElementById('editName').value = product.name || '';
+            document.getElementById('editCreator').value = product.creator || '';
+            document.getElementById('editCreatorUrl').value = product.creatorUrl || '';
+            document.getElementById('editModelUrl').value = product.modelUrl || '';
+            document.getElementById('editFilaments').value = (product.filaments || []).join(', ');
+            // Render offered colors from master list
+            renderEditColorOptions(product);
+
+            if (product.imageData) {
+                document.getElementById('editImagePreviewImg').src = product.imageData;
+                document.getElementById('editImagePreview').style.display = 'block';
+                document.getElementById('editImageName').textContent = 'Current photo';
+            } else {
+                document.getElementById('editImagePreview').style.display = 'none';
+                document.getElementById('editImageName').textContent = '';
+            }
+
+            document.getElementById('editProductModal').classList.add('active');
+        }
+
+        function closeEditModal() {
+            editingProductId = null;
+            document.getElementById('editProductModal').classList.remove('active');
+            document.getElementById('editImageFileInput').value = '';
+            document.getElementById('editImagePreviewImg').src = '';
+        }
+
+        function renderEditColorOptions(product) {
+            const master = loadMasterColors();
+            const container = document.getElementById('editColorOptions');
+            container.innerHTML = '';
+            Object.keys(master).forEach((colorName) => {
+                const hex = master[colorName].hex || '#999';
+                const checked = product.colors && product.colors[colorName] && product.colors[colorName].inStock;
+                const label = document.createElement('label');
+                label.style.display = 'inline-flex';
+                label.style.alignItems = 'center';
+                label.style.gap = '0.4rem';
+                label.style.padding = '0.25rem 0.5rem';
+                label.style.borderRadius = '999px';
+                label.style.border = '1px solid rgba(255,255,255,0.04)';
+                label.innerHTML = `<input type="checkbox" value="${colorName}" ${checked ? 'checked' : ''} /> <span style="display:inline-block;width:18px;height:18px;border-radius:50%;background:${hex};border:1px solid rgba(0,0,0,0.12);"></span> ${colorName}`;
+                container.appendChild(label);
+            });
+        }
+
+        function handleEditImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            if (file.size > 5 * 1024 * 1024) { alert('Photo too large (max 5MB)'); return; }
+            if (!file.type.startsWith('image/')) { alert('Select an image file'); return; }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('editImagePreviewImg').src = e.target.result;
+                document.getElementById('editImagePreview').style.display = 'block';
+                document.getElementById('editImageName').textContent = file.name;
+                // store temporary on window for saving
+                window.tempEditImageData = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function saveProductEdits() {
+            if (!editingProductId) return;
+            const product = products.find(p => p.id === editingProductId);
+            if (!product) return;
+            product.name = document.getElementById('editName').value.trim();
+            product.creator = document.getElementById('editCreator').value.trim();
+            product.creatorUrl = document.getElementById('editCreatorUrl').value.trim();
+            product.modelUrl = document.getElementById('editModelUrl').value.trim();
+            const filaments = document.getElementById('editFilaments').value.split(',').map(s => s.trim()).filter(Boolean);
+            product.filaments = filaments;
+
+            // update offered colors according to checkboxes
+            const checks = Array.from(document.querySelectorAll('#editColorOptions input[type=checkbox]'));
+            const newColors = product.colors || {};
+            checks.forEach((cb) => {
+                const name = cb.value;
+                if (cb.checked) {
+                    newColors[name] = newColors[name] || { inStock: true, generated: false };
+                    newColors[name].inStock = true;
+                } else {
+                    if (newColors[name]) newColors[name].inStock = false;
+                }
+            });
+            product.colors = newColors;
+
+            if (window.tempEditImageData) {
+                product.imageData = window.tempEditImageData;
+                window.tempEditImageData = null;
+            }
+
+            persistProducts();
+            closeEditModal();
+            renderProducts();
+            renderStats();
+            alert('Product updated');
+        }
+
+        // Master color management
+        function openManageColorsModal() {
+            renderMasterColors();
+            document.getElementById('manageColorsModal').classList.add('active');
+        }
+
+        function closeManageColorsModal() {
+            document.getElementById('manageColorsModal').classList.remove('active');
+        }
+
+        function renderMasterColors() {
+            const master = loadMasterColors();
+            const container = document.getElementById('masterColorGrid');
+            container.innerHTML = '';
+            Object.keys(master).forEach((name) => {
+                const entry = master[name];
+                const div = document.createElement('div');
+                div.className = 'color-item';
+                div.innerHTML = `
+                    <div class="swatch" style="background:${entry.hex || '#999'}"></div>
+                    <strong style="margin-right:0.6rem;">${name}</strong>
+                    <label style="margin-left:auto;display:inline-flex;align-items:center;gap:0.45rem;">
+                        <input type="checkbox" ${entry.available ? 'checked' : ''} onchange="toggleMasterColorAvailability(${JSON.stringify(name)})"> Available
+                    </label>
+                    <button class="delete-inline" onclick="deleteMasterColor(${JSON.stringify(name)})">Delete</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function addMasterColor() {
+            const name = document.getElementById('newMasterColorName').value.trim();
+            const hex = document.getElementById('newMasterColorHex').value.trim() || '#999';
+            if (!name) { alert('Provide a color name'); return; }
+            const master = loadMasterColors();
+            master[name] = { hex, available: true };
+            saveMasterColors(master);
+            document.getElementById('newMasterColorName').value = '';
+            document.getElementById('newMasterColorHex').value = '';
+            renderMasterColors();
+            alert('Color added');
+        }
+
+        function toggleMasterColorAvailability(name) {
+            const master = loadMasterColors();
+            if (!master[name]) return;
+            master[name].available = !master[name].available;
+            saveMasterColors(master);
+            renderMasterColors();
+            renderStats();
+        }
+
+        function deleteMasterColor(name) {
+            if (!confirm('Delete this color from the master list? This will not remove it from existing products.')) return;
+            const master = loadMasterColors();
+            delete master[name];
+            saveMasterColors(master);
+            renderMasterColors();
+            renderStats();
         }
 
         document.addEventListener('DOMContentLoaded', () => {
