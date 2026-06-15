@@ -1089,52 +1089,128 @@
             document.getElementById('importCollectionInput').value = '';
         }
 
-        function importCollectionFromHTML() {
-            const raw = document.getElementById('importCollectionInput').value.trim();
-            if (!raw) { alert('Paste collection HTML or list of model URLs'); return; }
-            const toAdd = [];
+        function parseMakerWorldCollection(raw) {
+            const normalized = raw.trim();
+            const found = [];
+            const seen = new Set();
 
-            // If raw looks like HTML, parse anchors
-            if (raw.startsWith('<')) {
+            function normalizeHref(href) {
+                if (!href) return '';
+                if (href.startsWith('//')) return 'https:' + href;
+                if (href.startsWith('/')) return 'https://makerworld.com' + href;
+                return href;
+            }
+
+            function extractCreatorFromElement(anchor) {
+                let creator = '';
+                let creatorUrl = '';
+                const ancestor = anchor.closest('article, li, div, section');
+                if (ancestor) {
+                    const creatorLink = ancestor.querySelector('a[href*="/en/@"]');
+                    if (creatorLink) {
+                        creator = (creatorLink.textContent || '').trim();
+                        creatorUrl = normalizeHref(creatorLink.getAttribute('href') || '');
+                    }
+                }
+                if (!creator) {
+                    const nextLink = anchor.nextElementSibling?.closest('a[href*="/en/@"]');
+                    if (nextLink) {
+                        creator = (nextLink.textContent || '').trim();
+                        creatorUrl = normalizeHref(nextLink.getAttribute('href') || '');
+                    }
+                }
+                return { creator, creatorUrl };
+            }
+
+            function findThumbnail(anchor) {
+                const image = anchor.querySelector('img') || anchor.closest('article, li, div')?.querySelector('img');
+                if (!image) return null;
+                const src = image.getAttribute('src') || image.getAttribute('data-src');
+                if (!src) return null;
+                return normalizeHref(src);
+            }
+
+            if (normalized.startsWith('<')) {
                 try {
-                    const doc = new DOMParser().parseFromString(raw, 'text/html');
-                    const anchors = Array.from(doc.querySelectorAll('a[href*="/models/"]'));
-                    anchors.forEach(a => {
-                        let href = a.getAttribute('href') || '';
-                        if (href && !href.startsWith('http')) href = 'https://makerworld.com' + href;
-                        const title = (a.textContent || a.getAttribute('title') || href).trim();
-                        if (href) toAdd.push({ title, href });
+                    const doc = new DOMParser().parseFromString(normalized, 'text/html');
+                    const items = Array.from(doc.querySelectorAll('a[href*="/en/models/"]'));
+                    items.forEach((anchor) => {
+                        let href = normalizeHref(anchor.getAttribute('href') || '');
+                        if (!href) return;
+                        const title = (anchor.textContent || '').trim() || href;
+                        const { creator, creatorUrl } = extractCreatorFromElement(anchor);
+                        const imageData = findThumbnail(anchor);
+                        const key = href.toLowerCase();
+                        if (seen.has(key)) return;
+                        seen.add(key);
+                        found.push({ title, href, creator, creatorUrl, imageData });
                     });
                 } catch (e) {
-                    console.warn('Failed to parse HTML', e);
+                    console.warn('HTML parse failed:', e);
                 }
             }
 
-            // Also accept plain newline-separated URLs or fall back
+            if (found.length === 0) {
+                const modelRegex = /\[([^\]]+?)\]\((https?:\/\/makerworld\.com\/en\/models\/[^^)]+)\)/gi;
+                const creatorRegex = /\[([^\]]+?)\]\((https?:\/\/makerworld\.com\/en\/@[^)]+)\)/gi;
+                const text = normalized.replace(/\s+/g, ' ');
+                let match;
+                const models = [];
+                while ((match = modelRegex.exec(text)) !== null) {
+                    models.push({ title: match[1].trim(), href: match[2].trim(), index: match.index });
+                }
+                const creators = [];
+                while ((match = creatorRegex.exec(text)) !== null) {
+                    creators.push({ name: match[1].trim(), url: match[2].trim(), index: match.index });
+                }
+                models.forEach((model) => {
+                    if (seen.has(model.href.toLowerCase())) return;
+                    let creator = '';
+                    let creatorUrl = '';
+                    const nextCreator = creators.find((item) => item.index > model.index);
+                    if (nextCreator) {
+                        creator = nextCreator.name;
+                        creatorUrl = nextCreator.url;
+                    }
+                    seen.add(model.href.toLowerCase());
+                    found.push({ title: model.title, href: model.href, creator, creatorUrl, imageData: null });
+                });
+            }
+
+            return found;
+        }
+
+        function importCollectionFromHTML() {
+            const raw = document.getElementById('importCollectionInput').value.trim();
+            if (!raw) { alert('Paste collection HTML or list of model URLs'); return; }
+            const toAdd = parseMakerWorldCollection(raw);
+
+            // Also accept plain newline-separated URLs or fall back if no models found
             if (toAdd.length === 0) {
                 const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-                lines.forEach(line => {
+                lines.forEach((line) => {
                     const url = line;
-                    const name = line.split('/').pop() || line;
-                    if (url) toAdd.push({ title: name, href: url });
+                    const name = line.split('/').pop()?.replace(/-/g, ' ') || line;
+                    if (url.match(/^https?:\/\//i)) {
+                        toAdd.push({ title: name, href: url, creator: '', creatorUrl: '', imageData: null });
+                    }
                 });
             }
 
             if (toAdd.length === 0) { alert('No model links found in input'); return; }
 
-            // Add to products
             refreshData();
             toAdd.forEach((item, idx) => {
                 products.push({
                     id: Date.now() + idx,
                     name: item.title,
-                    creator: '',
-                    creatorUrl: '',
+                    creator: item.creator || '',
+                    creatorUrl: item.creatorUrl || '',
                     modelUrl: item.href,
                     emoji: '📦',
                     colors: {},
                     filaments: [],
-                    imageData: null
+                    imageData: item.imageData || null
                 });
             });
             persistProducts();
