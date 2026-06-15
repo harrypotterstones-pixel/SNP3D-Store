@@ -1067,6 +1067,8 @@
             container.innerHTML = '';
             Object.keys(master).forEach((name) => {
                 const entry = master[name];
+                // Skip items explicitly marked deleted so seeded defaults can't be removed silently
+                if (entry && entry.deleted) return;
                 const div = document.createElement('div');
                 div.className = 'color-item';
                 div.innerHTML = `
@@ -1087,6 +1089,8 @@
             if (!name) { alert('Provide a color name'); return; }
             const master = loadMasterColors();
             master[name] = { hex, available: true };
+            // If the color was previously deleted, restore it
+            if (master[name].deleted) delete master[name].deleted;
             saveMasterColors(master);
             document.getElementById('newMasterColorName').value = '';
             document.getElementById('newMasterColorHex').value = '';
@@ -1106,7 +1110,10 @@
         function deleteMasterColor(name) {
             if (!confirm('Delete this color from the master list? This will not remove it from existing products.')) return;
             const master = loadMasterColors();
-            delete master[name];
+            if (!master[name]) return;
+            // Mark deleted so default seeds won't re-add it on next load
+            master[name].deleted = true;
+            master[name].available = false;
             saveMasterColors(master);
             renderMasterColors();
             renderStats();
