@@ -137,6 +137,70 @@
         .section { display: none; }
         .section.active { display: block; }
 
+        .auth-overlay {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.86);
+            z-index: 9999;
+            padding: 2rem;
+            pointer-events: none;
+        }
+
+        .auth-overlay.active {
+            display: grid;
+            pointer-events: auto;
+        }
+
+        .auth-card {
+            width: min(440px, 100%);
+            background: rgba(22, 26, 36, 0.98);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 24px;
+            box-shadow: 0 40px 90px rgba(0,0,0,0.35);
+            padding: 2rem;
+        }
+
+        .auth-card h2 {
+            margin-bottom: 1rem;
+        }
+
+        .auth-card p {
+            color: var(--muted);
+            margin-bottom: 1.2rem;
+            line-height: 1.6;
+        }
+
+        .auth-card input {
+            width: 100%;
+            padding: 0.95rem 1rem;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.04);
+            color: var(--ink);
+            margin-bottom: 1rem;
+            font: inherit;
+        }
+
+        .auth-card button {
+            width: 100%;
+            padding: 0.95rem 1rem;
+        }
+
+        .auth-error {
+            color: #f28a8a;
+            margin-bottom: 1rem;
+            min-height: 1.25rem;
+        }
+
+        .shell.locked {
+            opacity: 0.2;
+            pointer-events: none;
+            user-select: none;
+        }
+
         .panel {
             padding: 1.25rem;
         }
@@ -394,13 +458,26 @@
     </style>
 </head>
 <body>
-    <div class="shell">
+    <div class="auth-overlay active" id="authOverlay">
+        <div class="auth-card">
+            <h2>Admin sign in</h2>
+            <p>Enter the admin password to access the SNP3D catalog manager.</p>
+            <div class="auth-error" id="authError"></div>
+            <input id="adminPassword" type="password" placeholder="Admin password" autocomplete="off" />
+            <button type="button" class="btn btn-primary" onclick="attemptAdminLogin()">Unlock Admin</button>
+        </div>
+    </div>
+
+    <div class="shell locked">
         <header>
             <div class="header-copy">
                 <h1>&#9881;&#65039; SNP3D Catalog Admin</h1>
                 <p>Manage the products you sell, track which colors are in stock, and keep creator attribution synced automatically with the customer-facing site.</p>
             </div>
-            <a href="index.html" class="back-link">&#8592; Back to storefront</a>
+            <div style="display:flex; gap:0.7rem; flex-wrap:wrap; align-items:center;">
+                <a href="index.html" class="back-link">&#8592; Back to storefront</a>
+                <button type="button" class="btn btn-secondary" onclick="logoutAdmin()">Logout</button>
+            </div>
         </header>
 
         <section class="stats">
@@ -1035,9 +1112,74 @@
             renderStats();
         }
 
+        const ADMIN_AUTH_KEY = 'snp3d_admin_authed';
+        const ADMIN_PASSWORD_HASH = '83344c52d6d989fe98ebb0b17d11a7637fb7be96cb467a98374e7666cf1db4a8';
+
+        function isAdminAuthenticated() {
+            return sessionStorage.getItem(ADMIN_AUTH_KEY) === 'true';
+        }
+
+        function setAdminAuthenticated(value) {
+            sessionStorage.setItem(ADMIN_AUTH_KEY, value ? 'true' : 'false');
+        }
+
+        function hashPassword(password) {
+            const data = new TextEncoder().encode(`snp3d_root_salt_2026:${password}`);
+            return crypto.subtle.digest('SHA-256', data).then((hash) => {
+                return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, '0')).join('');
+            });
+        }
+
+        async function attemptAdminLogin() {
+            const input = document.getElementById('adminPassword');
+            const error = document.getElementById('authError');
+            const password = input.value.trim();
+            if (!password) {
+                error.textContent = 'Enter the admin password.';
+                return;
+            }
+            const hash = await hashPassword(password);
+            if (hash === ADMIN_PASSWORD_HASH) {
+                setAdminAuthenticated(true);
+                showAdminAuth();
+                error.textContent = '';
+                input.value = '';
+                renderStats();
+                renderProducts();
+            } else {
+                error.textContent = 'Incorrect password.';
+            }
+        }
+
+        function showAdminAuth() {
+            const overlay = document.getElementById('authOverlay');
+            const shell = document.querySelector('.shell');
+            if (!isAdminAuthenticated()) {
+                overlay.classList.add('active');
+                shell.classList.add('locked');
+            } else {
+                overlay.classList.remove('active');
+                shell.classList.remove('locked');
+            }
+        }
+
+        function logoutAdmin() {
+            setAdminAuthenticated(false);
+            showAdminAuth();
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
-            renderStats();
-            renderProducts();
+            showAdminAuth();
+            if (isAdminAuthenticated()) {
+                renderStats();
+                renderProducts();
+            }
+            document.getElementById('adminPassword').addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    attemptAdminLogin();
+                }
+            });
         });
     </script>
 </body>
