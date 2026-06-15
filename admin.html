@@ -468,6 +468,19 @@
         </div>
     </div>
 
+        <!-- Import collection modal -->
+        <div class="modal" id="importCollectionModal">
+            <div class="modal-card">
+                <h2>Import MakerWorld Collection</h2>
+                <p style="color:var(--muted);">Paste the collection page HTML (or a newline-separated list of model URLs). The importer will add each model as a product with the model URL filled in.</p>
+                <textarea id="importCollectionInput" style="width:100%;min-height:180px;padding:0.8rem;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,0.12);color:var(--ink);margin-top:0.8rem;" placeholder="Paste collection page HTML or list of URLs here..."></textarea>
+                <div style="display:flex; gap:0.6rem; justify-content:flex-end; margin-top:0.8rem;">
+                    <button type="button" class="btn btn-secondary" onclick="closeImportModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="importCollectionFromHTML()">Import</button>
+                </div>
+            </div>
+        </div>
+
     <div class="shell locked">
         <header>
             <div class="header-copy">
@@ -576,6 +589,7 @@
                     </div>
                     <div style="display:flex; gap:0.6rem; align-items:center;">
                         <button type="button" class="btn btn-secondary" onclick="openManageColorsModal()">Manage Colors</button>
+                        <button type="button" class="btn btn-secondary" onclick="openImportModal()">Import Collection</button>
                     </div>
                 </div>
                 <div class="product-list" id="productList"></div>
@@ -1059,6 +1073,71 @@
 
         function closeManageColorsModal() {
             document.getElementById('manageColorsModal').classList.remove('active');
+        }
+
+        // Import collection modal handlers
+        function openImportModal() {
+            document.getElementById('importCollectionModal').classList.add('active');
+        }
+
+        function closeImportModal() {
+            document.getElementById('importCollectionModal').classList.remove('active');
+            document.getElementById('importCollectionInput').value = '';
+        }
+
+        function importCollectionFromHTML() {
+            const raw = document.getElementById('importCollectionInput').value.trim();
+            if (!raw) { alert('Paste collection HTML or list of model URLs'); return; }
+            const toAdd = [];
+
+            // If raw looks like HTML, parse anchors
+            if (raw.startsWith('<')) {
+                try {
+                    const doc = new DOMParser().parseFromString(raw, 'text/html');
+                    const anchors = Array.from(doc.querySelectorAll('a[href*="/models/"]'));
+                    anchors.forEach(a => {
+                        let href = a.getAttribute('href') || '';
+                        if (href && !href.startsWith('http')) href = 'https://makerworld.com' + href;
+                        const title = (a.textContent || a.getAttribute('title') || href).trim();
+                        if (href) toAdd.push({ title, href });
+                    });
+                } catch (e) {
+                    console.warn('Failed to parse HTML', e);
+                }
+            }
+
+            // Also accept plain newline-separated URLs or fall back
+            if (toAdd.length === 0) {
+                const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+                lines.forEach(line => {
+                    const url = line;
+                    const name = line.split('/').pop() || line;
+                    if (url) toAdd.push({ title: name, href: url });
+                });
+            }
+
+            if (toAdd.length === 0) { alert('No model links found in input'); return; }
+
+            // Add to products
+            refreshData();
+            toAdd.forEach((item, idx) => {
+                products.push({
+                    id: Date.now() + idx,
+                    name: item.title,
+                    creator: '',
+                    creatorUrl: '',
+                    modelUrl: item.href,
+                    emoji: '📦',
+                    colors: {},
+                    filaments: [],
+                    imageData: null
+                });
+            });
+            persistProducts();
+            renderProducts();
+            renderStats();
+            closeImportModal();
+            alert(`Imported ${toAdd.length} models into the catalog.`);
         }
 
         function renderMasterColors() {
