@@ -473,7 +473,11 @@
             <div class="modal-card">
                 <h2>Import MakerWorld Collection</h2>
                 <p style="color:var(--muted);">Paste the collection page HTML (or a newline-separated list of model URLs). The importer will add each model as a product with the model URL filled in.</p>
-                <textarea id="importCollectionInput" style="width:100%;min-height:180px;padding:0.8rem;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,0.12);color:var(--ink);margin-top:0.8rem;" placeholder="Paste collection page HTML or list of URLs here..."></textarea>
+                <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.6rem;">
+                    <input id="importCollectionUrl" placeholder="Paste collection URL (e.g. https://makerworld.com/collections/...)" style="flex:1;padding:0.6rem;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,0.08);color:var(--ink);" />
+                    <button type="button" class="btn btn-primary" onclick="importCollectionFetch()">Fetch</button>
+                </div>
+                <textarea id="importCollectionInput" style="width:100%;min-height:180px;padding:0.8rem;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,0.12);color:var(--ink);margin-top:0.8rem;" placeholder="Or paste collection page HTML or list of URLs here..."></textarea>
                 <div style="display:flex; gap:0.6rem; justify-content:flex-end; margin-top:0.8rem;">
                     <button type="button" class="btn btn-secondary" onclick="closeImportModal()">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="importCollectionFromHTML()">Import</button>
@@ -1138,6 +1142,25 @@
             renderStats();
             closeImportModal();
             alert(`Imported ${toAdd.length} models into the catalog.`);
+        }
+
+        async function importCollectionFetch() {
+            const url = document.getElementById('importCollectionUrl').value.trim();
+            if (!url) { alert('Enter a collection URL to fetch or paste HTML below'); return; }
+
+            // Use AllOrigins free proxy to bypass CORS quickly. If it fails, paste HTML manually.
+            const proxy = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+            try {
+                const resp = await fetch(proxy, { method: 'GET' });
+                if (!resp.ok) throw new Error('Fetch failed: ' + resp.status);
+                const text = await resp.text();
+                // place the fetched HTML into textarea and run the HTML importer
+                document.getElementById('importCollectionInput').value = text;
+                importCollectionFromHTML();
+            } catch (err) {
+                console.warn('Fetch via proxy failed', err);
+                alert('Automatic fetch failed (CORS/proxy). Please paste the collection HTML into the textarea instead.');
+            }
         }
 
         function renderMasterColors() {
