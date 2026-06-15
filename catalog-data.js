@@ -38,21 +38,36 @@ function loadMasterColors() {
     const saved = localStorage.getItem(MASTER_COLOR_STORAGE_KEY);
     if (!saved) {
         const defaults = defaultMasterColors();
-        localStorage.setItem(MASTER_COLOR_STORAGE_KEY, JSON.stringify(defaults));
-        return defaults;
+        // store container object to allow tracking removed defaults
+        const container = { ...defaults, __removed: [] };
+        localStorage.setItem(MASTER_COLOR_STORAGE_KEY, JSON.stringify(container));
+        return container;
     }
 
     try {
         const parsed = JSON.parse(saved);
-        // Ensure seeded colors exist
+        // Ensure seeded colors exist, but respect any names the user has removed
         const defaults = defaultMasterColors();
         const merged = { ...defaults, ...parsed };
+
+        // If parsed contains a list of removed default names, remove them from the merged set
+        if (Array.isArray(parsed.__removed)) {
+            parsed.__removed.forEach((n) => {
+                if (n && merged.hasOwnProperty(n)) delete merged[n];
+            });
+            // keep the removed list on the merged object so it persists
+            merged.__removed = parsed.__removed.slice();
+        } else {
+            merged.__removed = merged.__removed || [];
+        }
+
         localStorage.setItem(MASTER_COLOR_STORAGE_KEY, JSON.stringify(merged));
         return merged;
     } catch (e) {
         const defaults = defaultMasterColors();
-        localStorage.setItem(MASTER_COLOR_STORAGE_KEY, JSON.stringify(defaults));
-        return defaults;
+        const container = { ...defaults, __removed: [] };
+        localStorage.setItem(MASTER_COLOR_STORAGE_KEY, JSON.stringify(container));
+        return container;
     }
 }
 

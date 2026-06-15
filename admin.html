@@ -1065,10 +1065,12 @@
             const master = loadMasterColors();
             const container = document.getElementById('masterColorGrid');
             container.innerHTML = '';
+            const removed = Array.isArray(master.__removed) ? master.__removed : [];
             Object.keys(master).forEach((name) => {
+                if (name === '__removed') return;
+                if (removed.includes(name)) return;
                 const entry = master[name];
-                // Skip items explicitly marked deleted so seeded defaults can't be removed silently
-                if (entry && entry.deleted) return;
+                if (!entry) return;
                 const div = document.createElement('div');
                 div.className = 'color-item';
                 div.innerHTML = `
@@ -1089,8 +1091,8 @@
             if (!name) { alert('Provide a color name'); return; }
             const master = loadMasterColors();
             master[name] = { hex, available: true };
-            // If the color was previously deleted, restore it
-            if (master[name].deleted) delete master[name].deleted;
+            // If the color was previously removed from defaults, remove it from the removed list
+            master.__removed = Array.isArray(master.__removed) ? master.__removed.filter(n => n !== name) : [];
             saveMasterColors(master);
             document.getElementById('newMasterColorName').value = '';
             document.getElementById('newMasterColorHex').value = '';
@@ -1111,9 +1113,11 @@
             if (!confirm('Delete this color from the master list? This will not remove it from existing products.')) return;
             const master = loadMasterColors();
             if (!master[name]) return;
-            // Mark deleted so default seeds won't re-add it on next load
-            master[name].deleted = true;
-            master[name].available = false;
+            // Permanently remove from the master list and record as removed so seeded defaults won't re-add
+            master.__removed = Array.isArray(master.__removed) ? master.__removed : [];
+            if (!master.__removed.includes(name)) master.__removed.push(name);
+            // Delete the color entry itself
+            if (master.hasOwnProperty(name)) delete master[name];
             saveMasterColors(master);
             renderMasterColors();
             renderStats();
